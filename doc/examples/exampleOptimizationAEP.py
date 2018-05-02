@@ -1,8 +1,8 @@
 from __future__ import print_function
 
 from openmdao.api import Problem, pyOptSparseDriver, ScipyOptimizer
-from wakeexchange.OptimizationGroups import OptAEP
-from wakeexchange import config
+from plantenergy.OptimizationGroups import OptAEP
+from plantenergy import config
 
 import time
 import numpy as np
@@ -57,6 +57,7 @@ if __name__ == "__main__":
     xpoints, ypoints = np.meshgrid(points, points)
     turbineX = np.ndarray.flatten(xpoints)
     turbineY = np.ndarray.flatten(ypoints)
+    turbineZ = np.ones(turbineX.size)*90.0
 
     # initialize input variable arrays
     nTurbs = turbineX.size
@@ -89,7 +90,8 @@ if __name__ == "__main__":
 
     # initialize problem
     prob = Problem(impl=impl, root=OptAEP(nTurbines=nTurbs, nDirections=windDirections.size,
-                                          minSpacing=minSpacing, differentiable=True, use_rotor_components=False))
+                                          minSpacing=minSpacing, differentiable=True, use_rotor_components=False)) 
+
 
     # Tell the whole model to finite difference
     prob.root.deriv_options['type'] = 'fd'
@@ -98,9 +100,9 @@ if __name__ == "__main__":
     prob.driver = pyOptSparseDriver()
     prob.driver.options['optimizer'] = 'SLSQP' #NSGA2, CONMIN, SNOPT, SLSQP, COBYLA
     #SLSQP options
-    prob.driver.opt_settings['MAXIT'] = 20
+    prob.driver.opt_settings['MAXIT'] = 200
     #NSGA2 options
-    #prob.driver.opt_settings['maxGen'] = 10
+    #prob.driver.opt_settings['maxGen'] = 5
     #SNOPT options
     #prob.driver.opt_settings['Verify level'] = 3 
     #prob.driver.opt_settings['Print file'] = 'SNOPT_print_exampleOptAEP.out'
@@ -120,6 +122,7 @@ if __name__ == "__main__":
     # select design variables
     prob.driver.add_desvar('turbineX', lower=np.ones(nTurbs)*min(turbineX), upper=np.ones(nTurbs)*max(turbineX), scaler=1)
     prob.driver.add_desvar('turbineY', lower=np.ones(nTurbs)*min(turbineY), upper=np.ones(nTurbs)*max(turbineY), scaler=1)
+    prob.driver.add_desvar('hubHeight', lower=np.ones(nTurbs)*50.0, upper=np.ones(nTurbs)*120.0)
     #for direction_id in range(0, windDirections.size):
     #    prob.driver.add_desvar('yaw%i' % direction_id, lower=-30.0, upper=30.0, scaler=1)
 
@@ -137,6 +140,7 @@ if __name__ == "__main__":
     # assign initial values to design variables
     prob['turbineX'] = turbineX
     prob['turbineY'] = turbineY
+    prob['hubHeight'] = turbineZ
     for direction_id in range(0, windDirections.size):
         prob['yaw%i' % direction_id] = yaw
 
@@ -152,6 +156,12 @@ if __name__ == "__main__":
     prob['windFrequencies'] = windFrequencies
     prob['Ct_in'] = Ct
     prob['Cp_in'] = Cp
+
+    # set wind shear conditions
+    prob['model_params:cos_spread'] = 1E12         # turns off cosine spread (just needs to be very large)
+    prob['model_params:shearExp'] = 0.02         # turns off cosine spread (just needs to be very large)
+    prob['model_params:z_ref'] = 80.         # turns off cosine spread (just needs to be very large)
+    prob['model_params:z0'] = 0.
 
     # set options
     # prob['floris_params:FLORISoriginal'] = True
@@ -177,6 +187,7 @@ if __name__ == "__main__":
 
     mpi_print(prob,  'turbine X positions in wind frame (m): %s' % prob['turbineX'])
     mpi_print(prob,  'turbine Y positions in wind frame (m): %s' % prob['turbineY'])
+    mpi_print(prob,  'turbine Z positions in wind frame (m): %s' % prob['hubHeight'])
     mpi_print(prob,  'wind farm power in each direction (kW): %s' % prob['dirPowers'])
     mpi_print(prob,  'AEP (kWh): %s' % prob['AEP'])
 
@@ -192,6 +203,6 @@ if __name__ == "__main__":
     plt.legend()
     plt.xlabel('Turbine X Position ($X/D_r$)')
     plt.ylabel('Turbine Y Position ($Y/D_r$)')
-    plt.xlim([3, 12])
-    plt.ylim([3, 12])
+    plt.xlim([3, 30])
+    plt.ylim([3, 30])
     plt.show()
